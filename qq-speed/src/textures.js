@@ -37,7 +37,7 @@ function cached(key, fn) {
   return cache.get(key);
 }
 
-// 路面：u 横跨整个路宽，v 沿路方向（一张 = 24 米）
+// Road: u spans the full road width, v runs along the road (one tile = 24 m)
 export function roadTexture(style) {
   return cached('road-' + style, () => {
     const W = 512, H = 1024;
@@ -45,7 +45,7 @@ export function roadTexture(style) {
     const rnd = mulberry32(7);
     if (style === 'asphalt') {
       noiseFill(g, W, H, '#474b55', 0.16, rnd, 2);
-      // 车辙暗带
+      // Dark tire-track bands
       for (const x of [0.3, 0.7]) {
         const grd = g.createLinearGradient(W * x - 40, 0, W * x + 40, 0);
         grd.addColorStop(0, 'rgba(0,0,0,0)');
@@ -65,7 +65,7 @@ export function roadTexture(style) {
         g.fillRect(W * 0.25 - 3, y, 6, 128);
         g.fillRect(W * 0.75 - 3, y, 6, 128);
       }
-      // 路面蓝色霓虹边
+      // Blue neon road edges
       g.fillStyle = '#2aa8ff';
       g.fillRect(0, 0, 8, H);
       g.fillRect(W - 8, 0, 8, H);
@@ -95,7 +95,7 @@ export function roadTexture(style) {
         g.fillStyle = `rgba(0,0,0,${rnd() * 0.08})`;
         g.fillRect(rnd() * W, rnd() * H, 2, 2);
       }
-      // 蓝色路缘
+      // Blue curbs
       g.fillStyle = '#2f7fd8';
       g.fillRect(0, 0, 14, H);
       g.fillRect(W - 14, 0, 14, H);
@@ -125,7 +125,7 @@ export function roadTexture(style) {
         g.fillStyle = `rgba(${rnd() > 0.5 ? '255,240,200' : '90,60,30'},${rnd() * 0.12})`;
         g.fillRect(rnd() * W, rnd() * H, 2, 2);
       }
-      // 紫色路边（参考法老金字塔原画）
+      // Purple road edges (based on the Pharaoh's Pyramid concept art)
       g.fillStyle = '#5b3f9e';
       g.fillRect(0, 0, 18, H);
       g.fillRect(W - 18, 0, 18, H);
@@ -135,7 +135,7 @@ export function roadTexture(style) {
     } else if (style === 'plate') {
       g.fillStyle = '#3c4a66';
       g.fillRect(0, 0, W, H);
-      // 菱形防滑钢板
+      // Diamond-plate steel
       for (let y = 0; y < H; y += 24) {
         for (let x = 0; x < W; x += 24) {
           const ox = ((y / 24) & 1) * 12;
@@ -155,7 +155,7 @@ export function roadTexture(style) {
         g.fillStyle = `rgba(255,255,255,${rnd() * 0.08})`;
         g.fillRect(rnd() * W, rnd() * H, 2, 2);
       }
-      // 雪边与亮蓝边线
+      // Snowy edges and bright blue edge lines
       const grd = g.createLinearGradient(0, 0, 40, 0);
       grd.addColorStop(0, 'rgba(240,248,255,0.95)');
       grd.addColorStop(1, 'rgba(240,248,255,0)');
@@ -203,28 +203,17 @@ export function checkerTexture(a = '#111', b = '#fff', nx = 8, ny = 2) {
   });
 }
 
-// 护栏：一张覆盖 16 米
+// Walls: one tile covers 16 m
 export function wallTexture(style) {
   return cached('wall-' + style, () => {
     const W = 1024, H = 128;
     const [c, g] = mk(W, H);
     const rnd = mulberry32(3);
     if (style === 'city') {
-      const cols = ['#1565c0', '#fafafa', '#e53935', '#fafafa'];
-      for (let i = 0; i < 4; i++) {
-        g.fillStyle = cols[i];
-        g.fillRect(i * 256, 0, 256, H);
-      }
-      g.font = 'bold 64px Arial Black, Arial';
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      const txt = ['SPEED', 'SPEEDQQ.COM', 'NITRO', 'SPEEDQQ.COM'];
-      const tc = ['#ffffff', '#1565c0', '#ffffff', '#e53935'];
-      for (let i = 0; i < 4; i++) {
-        g.fillStyle = tc[i];
-        g.font = i % 2 ? 'bold 34px Arial' : 'italic bold 60px Arial Black, Arial';
-        g.fillText(txt[i], i * 256 + 128, H / 2 + 2);
-      }
+      // Sponsor boards along the barrier
+      ['pirelli', 'mobil1', 'michelin', 'castrol'].forEach((id, i) => paintBrand(g, id, i * 256, 0, 256, H));
+      g.fillStyle = 'rgba(0,0,0,0.5)';
+      for (let i = 0; i < 4; i++) g.fillRect(i * 256, 0, 4, H);
       g.fillStyle = 'rgba(0,0,0,0.35)';
       g.fillRect(0, H - 10, W, 10);
       g.fillStyle = 'rgba(255,255,255,0.5)';
@@ -238,7 +227,7 @@ export function wallTexture(style) {
       }
       g.fillStyle = '#2d6fc4';
       g.fillRect(0, 0, W, 18);
-      // 蓝色栏杆格
+      // Blue railing grid
       g.strokeStyle = '#3a82d6';
       g.lineWidth = 5;
       for (let x = 0; x < W; x += 64) {
@@ -265,7 +254,7 @@ export function wallTexture(style) {
       g.fillRect(0, 0, W, 20);
       g.fillStyle = '#e8c547';
       g.fillRect(0, 20, W, 4);
-      // 象形符号
+      // Hieroglyphs
       g.fillStyle = 'rgba(80,45,20,0.55)';
       for (let x = 30; x < W; x += 120) {
         g.beginPath();
@@ -277,20 +266,10 @@ export function wallTexture(style) {
         g.fillRect(x + 72, 66, 22, 5);
       }
     } else if (style === 'snow') {
-      const cols = ['#c62828', '#1e4fb0', '#c62828', '#1e4fb0'];
-      const txt = ['SPEED', 'Victory', 'SPEED', 'Victory'];
-      for (let i = 0; i < 4; i++) {
-        const grd = g.createLinearGradient(0, 0, 0, H);
-        grd.addColorStop(0, cols[i]);
-        grd.addColorStop(1, '#0b1636');
-        g.fillStyle = grd;
-        g.fillRect(i * 256, 0, 256, H);
-        g.fillStyle = 'rgba(255,255,255,0.9)';
-        g.font = 'italic bold 54px Arial Black, Arial';
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.fillText(txt[i], i * 256 + 128, H / 2 + 6);
-      }
+      // Sponsor boards below the snow cap
+      ['michelin', 'redbull', 'goodyear', 'motul'].forEach((id, i) => paintBrand(g, id, i * 256, 14, 256, H - 14));
+      g.fillStyle = 'rgba(0,0,0,0.5)';
+      for (let i = 0; i < 4; i++) g.fillRect(i * 256, 0, 4, H);
       g.fillStyle = '#f5fbff';
       g.fillRect(0, 0, W, 14);
     }
@@ -350,7 +329,7 @@ export function groundTexture(type) {
   });
 }
 
-// 建筑立面：窗户网格
+// Building facades: window grid
 export function facadeTexture(kind) {
   return cached('facade-' + kind, () => {
     const W = 256, H = 512;
@@ -420,6 +399,38 @@ export function facadeTexture(kind) {
           g.strokeStyle = 'rgba(120,80,40,0.4)';
           g.strokeRect(x + (((y / 32) & 1) * 32), y, 64, 32);
         }
+    } else if (kind === 'night') {
+      // dark tower with a scatter of lit windows; used as its own emissive map so the windows glow at night
+      g.fillStyle = '#10131f';
+      g.fillRect(0, 0, W, H);
+      // whole floors tend to be lit or dark together, mostly in warm office light
+      for (let y = 10; y < H; y += 32) {
+        const floorLit = rnd() < 0.45 ? 0.75 : 0.12;
+        const tint = rnd() < 0.8 ? '#ffd48a' : '#8fe3ff';
+        for (let x = 10; x < W; x += 30) {
+          g.fillStyle = rnd() < floorLit ? tint : '#1b2233';
+          g.fillRect(x, y, 20, 18);
+        }
+      }
+      for (let y = 0; y < H; y += 176) {
+        g.fillStyle = rnd() > 0.5 ? '#ff2d95' : '#27c7ff';
+        g.fillRect(0, y, W, 3);
+      }
+    } else if (kind === 'gold') {
+      const grd = g.createLinearGradient(0, 0, W, H);
+      grd.addColorStop(0, '#f6d7a0');
+      grd.addColorStop(0.5, '#c98f4a');
+      grd.addColorStop(1, '#7a4f2a');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, W, H);
+      for (let y = 0; y < H; y += 20) {
+        g.fillStyle = 'rgba(255,240,210,0.3)';
+        g.fillRect(0, y, W, 2);
+      }
+      for (let x = 0; x < W; x += 26) {
+        g.fillStyle = 'rgba(60,35,15,0.45)';
+        g.fillRect(x, 0, 2, H);
+      }
     } else if (kind === 'lodge') {
       g.fillStyle = '#7a4a2a';
       g.fillRect(0, 0, W, H);
@@ -459,13 +470,281 @@ export function billboardTexture(title, sub, c1 = '#ff7a00', c2 = '#ffd000', fg 
     g.font = 'italic 900 92px "Arial Black", Arial, sans-serif';
     g.shadowColor = 'rgba(0,0,0,0.35)';
     g.shadowBlur = 8;
-    g.fillText(title, 256, sub ? 108 : 128);
+    g.fillText(title, 256, sub ? 108 : 128, 472);
     if (sub) {
       g.font = 'bold 40px "PingFang SC","Microsoft YaHei",sans-serif';
-      g.fillText(sub, 256, 196);
+      g.fillText(sub, 256, 196, 472);
     }
     const t = toTex(c, { repeat: false });
     return t;
+  });
+}
+
+// Sponsor boards: real brands drawn as wordmarks in their house colours (type and colour only, no logo artwork).
+// Each painter fills a w×h panel with its top-left corner at the origin. Fonts use '#' as the pixel-size placeholder.
+const HEAVY = '"Arial Black", "Arial Bold", Arial, sans-serif';
+
+// Shrinks `size` until `text` fits in maxW; leaves the font set on g
+function fitFont(g, text, font, size, maxW) {
+  g.font = font.replace('#', size);
+  const tw = g.measureText(text).width;
+  if (tw > maxW) {
+    size = Math.floor((size * maxW) / tw);
+    g.font = font.replace('#', size);
+  }
+  return size;
+}
+
+// Plain wordmark centred on a flat background; `deco` paints extras (stripes, rules) before the text
+function wordmark(bg, fg, text, font, deco = null) {
+  return (g, w, h) => {
+    g.fillStyle = bg;
+    g.fillRect(0, 0, w, h);
+    if (deco) deco(g, w, h);
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, text, font, Math.round(h * 0.56), w * 0.84);
+    g.fillStyle = fg;
+    g.fillText(text, w / 2, h / 2 + s * 0.35);
+  };
+}
+
+const rules = (color) => (g, w, h) => {
+  g.fillStyle = color;
+  g.fillRect(w * 0.06, h * 0.12, w * 0.88, Math.max(2, h * 0.025));
+  g.fillRect(w * 0.06, h * 0.86, w * 0.88, Math.max(2, h * 0.025));
+};
+
+const band = (color, y0, y1) => (g, w, h) => {
+  g.fillStyle = color;
+  g.fillRect(0, h * y0, w, h * (y1 - y0));
+};
+
+// Wordmark with an outline, for brands whose letters sit on a busy or low-contrast background
+function outlined(g, w, h, text, font, fill, stroke, size, maxW, y) {
+  g.textAlign = 'center';
+  g.textBaseline = 'alphabetic';
+  const s = fitFont(g, text, font, size, maxW);
+  g.lineJoin = 'round';
+  g.lineWidth = s * 0.12;
+  g.strokeStyle = stroke;
+  g.strokeText(text, w / 2, y ?? h / 2 + s * 0.35);
+  g.fillStyle = fill;
+  g.fillText(text, w / 2, y ?? h / 2 + s * 0.35);
+}
+
+const BRANDS = {
+  // The long P: its top stroke runs over the rest of the word
+  pirelli(g, w, h) {
+    g.fillStyle = '#000000';
+    g.fillRect(0, 0, w, h);
+    const font = `900 #px ${HEAVY}`;
+    let s = h * 0.4;
+    g.font = font.replace('#', s * 1.5);
+    let wp = g.measureText('P').width;
+    g.font = font.replace('#', s);
+    let wr = g.measureText('IRELLI').width;
+    const k = Math.min(1, (w * 0.84) / (wp + wr));
+    s *= k; wp *= k; wr *= k;
+    const x0 = (w - wp - wr) / 2, y = h / 2 + s * 0.54;
+    g.fillStyle = '#ffd100';
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    g.font = font.replace('#', s * 1.5);
+    g.fillText('P', x0, y);
+    g.font = font.replace('#', s);
+    g.fillText('IRELLI', x0 + wp, y);
+    g.fillRect(x0 + wp * 0.5, y - s * 1.07, wr + wp * 0.5, s * 0.19);
+  },
+  shell: wordmark('#fbce07', '#dd1d21', 'Shell', 'bold #px Arial, Helvetica, sans-serif', band('#dd1d21', 0.86, 1)),
+  redbull(g, w, h) {
+    g.fillStyle = '#0b1e4f';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#ffc906';
+    g.beginPath();
+    g.arc(w / 2, h / 2, h * 0.36, 0, Math.PI * 2);
+    g.fill();
+    outlined(g, w, h, 'Red Bull', 'bold #px Futura, "Century Gothic", "Trebuchet MS", Arial, sans-serif', '#db0a40', '#ffffff', Math.round(h * 0.4), w * 0.84);
+  },
+  // Red speed lines either side of the italic letters
+  dhl(g, w, h) {
+    g.fillStyle = '#ffcc00';
+    g.fillRect(0, 0, w, h);
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, 'DHL', `italic 900 #px ${HEAVY}`, Math.round(h * 0.6), w * 0.56);
+    const tw = g.measureText('DHL').width, y = h / 2 + s * 0.35;
+    g.fillStyle = '#d40511';
+    g.fillText('DHL', w / 2, y);
+    const lh = s * 0.11;
+    for (let i = 0; i < 3; i++) {
+      const ly = y - s * 0.66 + i * s * 0.24;
+      g.fillRect(w * 0.04, ly, w / 2 - tw / 2 - s * 0.12 - w * 0.04, lh);
+      g.fillRect(w / 2 + tw / 2 + s * 0.04, ly, w * 0.96 - (w / 2 + tw / 2 + s * 0.04), lh);
+    }
+  },
+  rolex: wordmark('#006039', '#d4af5a', 'ROLEX', 'bold #px Georgia, "Times New Roman", serif', rules('#d4af5a')),
+  michelin: wordmark('#27509b', '#fce500', 'MICHELIN', `italic 900 #px ${HEAVY}`),
+  // Blue letters, red "o" and red "1"
+  mobil1(g, w, h) {
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, w, h);
+    band('#0d3d91', 0.88, 1)(g, w, h);
+    const blue = '#0d3d91', red = '#e2231a';
+    const parts = [['M', blue], ['o', red], ['bil', blue], [' 1', red]];
+    const text = parts.map((p) => p[0]).join('');
+    const s = fitFont(g, text, 'bold #px Arial, Helvetica, sans-serif', Math.round(h * 0.56), w * 0.84);
+    let x = (w - g.measureText(text).width) / 2;
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    for (const [t, col] of parts) {
+      g.fillStyle = col;
+      g.fillText(t, x, h / 2 + s * 0.35);
+      x += g.measureText(t).width;
+    }
+  },
+  castrol(g, w, h) {
+    g.fillStyle = '#009a44';
+    g.fillRect(0, 0, w, h);
+    outlined(g, w, h, 'Castrol', `italic 900 #px ${HEAVY}`, '#e4002b', '#ffffff', Math.round(h * 0.5), w * 0.84);
+  },
+  // Orange disc with a navy ring on Gulf blue
+  gulf(g, w, h) {
+    g.fillStyle = '#8fc9ea';
+    g.fillRect(0, 0, w, h);
+    const r = h * 0.42;
+    g.fillStyle = '#f47b20';
+    g.beginPath();
+    g.arc(w / 2, h / 2, r, 0, Math.PI * 2);
+    g.fill();
+    g.lineWidth = r * 0.09;
+    g.strokeStyle = '#0b2a5b';
+    g.stroke();
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, 'Gulf', `900 #px ${HEAVY}`, Math.round(r * 0.8), r * 1.55);
+    g.fillStyle = '#0b2a5b';
+    g.fillText('Gulf', w / 2, h / 2 + s * 0.35);
+  },
+  sony: wordmark('#000000', '#ffffff', 'SONY', 'bold #px "Times New Roman", Times, Georgia, serif'),
+  panasonic: wordmark('#ffffff', '#0049ab', 'Panasonic', 'bold #px Arial, Helvetica, sans-serif'),
+  bridgestone: wordmark('#111111', '#ffffff', 'BRIDGESTONE', `italic 900 #px ${HEAVY}`, band('#e4002b', 0.84, 0.92)),
+  samsung: wordmark('#1428a0', '#ffffff', 'SAMSUNG', `900 #px ${HEAVY}`),
+  emirates: wordmark('#d71921', '#ffffff', 'Fly Emirates', 'italic bold #px Georgia, "Times New Roman", serif'),
+  petronas: wordmark('#00a19c', '#ffffff', 'PETRONAS', `900 #px ${HEAVY}`),
+  goodyear: wordmark('#0f2b6b', '#fdd100', 'GOODYEAR', `900 #px ${HEAVY}`, rules('#fdd100')),
+  motul: wordmark('#e30613', '#ffffff', 'MOTUL', `italic 900 #px ${HEAVY}`),
+  // Chow green with a yellow locator bubble beside the lowercase wordmark
+  chowdeck(g, w, h) {
+    g.fillStyle = '#0c513f';
+    g.fillRect(0, 0, w, h);
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, 'chowdeck', 'bold #px "Arial Rounded MT Bold", "Helvetica Rounded", Arial, sans-serif', Math.round(h * 0.44), w * 0.66);
+    const tw = g.measureText('chowdeck').width, r = s * 0.4;
+    const x0 = (w - (r * 2 + s * 0.22 + tw)) / 2, cx = x0 + r, cy = h / 2 - r * 0.3;
+    g.fillStyle = '#ffc501';
+    g.beginPath();
+    g.arc(cx, cy, r, Math.PI * 0.75, Math.PI * 2.25);
+    g.lineTo(cx, cy + r * 1.6);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#0c513f';
+    g.beginPath();
+    g.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.fillText('chowdeck', x0 + r * 2 + s * 0.22, h / 2 + s * 0.3);
+  },
+  // Navy-to-blue wordmark, the purple arrow sweeping up past the GO
+  manlago(g, w, h) {
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, w, h);
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, 'MANLAGO', `900 #px ${HEAVY}`, Math.round(h * 0.42), w * 0.88);
+    const tw = g.measureText('MANLAGO').width, x0 = (w - tw) / 2, y = h / 2 + s * 0.3;
+    const grd = g.createLinearGradient(x0, 0, x0 + tw, 0);
+    grd.addColorStop(0, '#1b1f6e');
+    grd.addColorStop(1, '#2563eb');
+    g.fillStyle = grd;
+    g.fillText('MANLAGO', x0, y);
+    const ax0 = x0 + tw * 0.6, ay0 = y - s * 0.86, ax1 = x0 + tw + s * 0.12, ay1 = y - s * 1.22;
+    const qx = (ax0 + ax1) / 2, qy = ay0 + s * 0.12;
+    g.strokeStyle = g.fillStyle = '#7c3aed';
+    g.lineWidth = s * 0.07;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(ax0, ay0);
+    g.quadraticCurveTo(qx, qy, ax1, ay1);
+    g.stroke();
+    const a = Math.atan2(ay1 - qy, ax1 - qx), L = s * 0.22;
+    g.beginPath();
+    g.moveTo(ax1 + Math.cos(a) * L * 0.4, ay1 + Math.sin(a) * L * 0.4);
+    g.lineTo(ax1 + Math.cos(a + 2.6) * L, ay1 + Math.sin(a + 2.6) * L);
+    g.lineTo(ax1 + Math.cos(a - 2.6) * L, ay1 + Math.sin(a - 2.6) * L);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#64748b';
+    g.textAlign = 'center';
+    g.font = `bold ${Math.round(s * 0.26)}px Arial, sans-serif`;
+    g.fillText('ENTERPRISE TECH SOLUTIONS', w / 2, y + s * 0.5, w * 0.9);
+  },
+  monster(g, w, h) {
+    g.fillStyle = '#000000';
+    g.fillRect(0, 0, w, h);
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, 'MONSTER', `italic 900 #px ${HEAVY}`, Math.round(h * 0.42), w * 0.86);
+    g.fillStyle = '#95d600';
+    g.fillText('MONSTER', w / 2, h * 0.5 + s * 0.2);
+    g.font = `bold ${Math.round(s * 0.4)}px Arial, sans-serif`;
+    g.fillStyle = '#ffffff';
+    g.fillText('ENERGY', w / 2, h * 0.5 + s * 0.75);
+  },
+};
+
+function paintBrand(g, id, x, y, w, h) {
+  g.save();
+  g.translate(x, y);
+  g.beginPath();
+  g.rect(0, 0, w, h);
+  g.clip();
+  BRANDS[id](g, w, h);
+  g.restore();
+}
+
+// Podium backdrop: the Grand Prix name over a step-and-repeat wall of sponsor boards
+export function podiumBackdropTexture(title, brands) {
+  return cached(`podium-${title}`, () => {
+    const W = 1024, H = 448;
+    const [c, g] = mk(W, H);
+    const grd = g.createLinearGradient(0, 0, 0, H);
+    grd.addColorStop(0, '#23232e');
+    grd.addColorStop(1, '#101016');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = '#e10600';
+    g.fillRect(0, 0, W, 16);
+    g.fillRect(0, H - 16, W, 16);
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'center';
+    g.textBaseline = 'alphabetic';
+    const s = fitFont(g, title, `italic 900 #px ${HEAVY}`, 64, W * 0.9);
+    g.fillText(title, W / 2, 40 + s * 0.85);
+    const cols = 6, rows = 3, pw = 160, ph = 80, gap = 8;
+    const x0 = (W - cols * pw - (cols - 1) * gap) / 2, y0 = 130;
+    for (let r = 0; r < rows; r++)
+      for (let k = 0; k < cols; k++) paintBrand(g, brands[(r * 2 + k) % brands.length], x0 + k * (pw + gap), y0 + r * (ph + gap), pw, ph);
+    return toTex(c, { repeat: false });
+  });
+}
+
+export function brandTexture(id, w = 512, h = 256) {
+  return cached(`brand-${id}-${w}x${h}`, () => {
+    const [c, g] = mk(w, h);
+    paintBrand(g, id, 0, 0, w, h);
+    return toTex(c, { repeat: false });
   });
 }
 
@@ -491,7 +770,7 @@ export function chevronTexture(bg = '#ffd000', fg = '#1a1a1a') {
   });
 }
 
-// 加速带：蓝色霓虹箭头（11城原画中的蓝色箭头）
+// Boost pads: blue neon arrows (the blue arrows from the City 11 concept art)
 export function boostPadTexture(color = '#27c7ff') {
   return cached('boost' + color, () => {
     const [c, g] = mk(256, 512);
@@ -567,10 +846,10 @@ export function textTexture(text, { w = 512, h = 128, bg = null, fg = '#fff', fo
     if (stroke) {
       g.strokeStyle = stroke;
       g.lineWidth = 10;
-      g.strokeText(text, w / 2, h / 2);
+      g.strokeText(text, w / 2, h / 2, w - 24);
     }
     g.fillStyle = fg;
-    g.fillText(text, w / 2, h / 2);
+    g.fillText(text, w / 2, h / 2, w - 24);
     return toTex(c, { repeat: false });
   });
 }

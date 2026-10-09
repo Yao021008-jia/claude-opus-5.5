@@ -1,0 +1,11 @@
+# Netlify deploy config. For a Git-connected site, set the base directory to qq-speed in the Netlify UI.
+[build]
+  command = "node build.mjs"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Online play server: the Cloudflare Worker that also hosts the game (`npm run deploy`). Without it, no Online button.
+  MP_URL = "wss://driftbolt.driftbolt.workers.dev"
+
+# Response headers live in public/_headers, which Netlify and Cloudflare both read

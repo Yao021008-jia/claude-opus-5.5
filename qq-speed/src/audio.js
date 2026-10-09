@@ -1,11 +1,21 @@
-// 全部音效与背景音乐都由 WebAudio 实时合成，无外部资源
+// All sound effects and background music are synthesized live with WebAudio; no external assets
 const NOTE = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
+// Simulated gear shifts: RPM cycles between 0.35 and 1 in each of six gears (speedRatio = speed / nitro top speed)
+function engineRpm(speedRatio) {
+  const gears = 6;
+  const g = Math.min(gears - 1, Math.floor(speedRatio * gears * 0.999));
+  const inGear = speedRatio * gears - g;
+  return 0.3 + inGear * 0.7 * (0.75 + g * 0.05);
+}
+
+const TRAFFIC_VOICES = 4; // rivals heard at once (the nearest ones)
+
 const SONGS = [
-  { name: '极速都市', bpm: 128, root: 57, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], lead: [0, 7, 12, 7, 10, 7, 3, 7], bassPat: [1, 0, 1, 1, 0, 1, 1, 0], style: 0 },
-  { name: '爱琴海之风', bpm: 118, root: 62, prog: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], lead: [12, 11, 7, 4, 7, 11, 12, 14], bassPat: [1, 0, 0, 1, 1, 0, 1, 0], style: 1 },
-  { name: '法老的试炼', bpm: 132, root: 55, prog: [[0, 3, 7], [1, 5, 8], [0, 3, 7], [-2, 1, 5]], lead: [0, 1, 4, 5, 7, 8, 7, 4], bassPat: [1, 1, 0, 1, 1, 0, 1, 1], style: 2 },
-  { name: '冰雪狂飙', bpm: 140, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], lead: [7, 12, 16, 12, 14, 12, 11, 7], bassPat: [1, 0, 1, 0, 1, 1, 1, 0], style: 3 },
+  { name: 'Speed City', bpm: 128, root: 57, prog: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], lead: [0, 7, 12, 7, 10, 7, 3, 7], bassPat: [1, 0, 1, 1, 0, 1, 1, 0], style: 0 },
+  { name: 'Aegean Breeze', bpm: 118, root: 62, prog: [[0, 4, 7], [-3, 0, 4], [5, 9, 12], [7, 11, 14]], lead: [12, 11, 7, 4, 7, 11, 12, 14], bassPat: [1, 0, 0, 1, 1, 0, 1, 0], style: 1 },
+  { name: "Pharaoh's Trial", bpm: 132, root: 55, prog: [[0, 3, 7], [1, 5, 8], [0, 3, 7], [-2, 1, 5]], lead: [0, 1, 4, 5, 7, 8, 7, 4], bassPat: [1, 1, 0, 1, 1, 0, 1, 1], style: 2 },
+  { name: 'Blizzard Rush', bpm: 140, root: 60, prog: [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], lead: [7, 12, 16, 12, 14, 12, 11, 7], bassPat: [1, 0, 1, 0, 1, 1, 1, 0], style: 3 },
 ];
 
 export class GameAudio {
@@ -38,13 +48,13 @@ export class GameAudio {
     this.music.gain.value = 0.32;
     this.music.connect(this.master);
 
-    // 噪声缓冲
+    // Noise buffer
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
 
-    // 引擎：锯齿 + 方波，低通
+    // Engine: sawtooth + square, low-passed
     this.engGain = ctx.createGain();
     this.engGain.gain.value = 0;
     this.engFilter = ctx.createBiquadFilter();
@@ -63,7 +73,7 @@ export class GameAudio {
     this.eng1.start();
     this.eng2.start();
 
-    // 漂移胎噪
+    // Drift tire squeal
     this.skidSrc = ctx.createBufferSource();
     this.skidSrc.buffer = this.noise;
     this.skidSrc.loop = true;
@@ -77,7 +87,7 @@ export class GameAudio {
     this.skidSrc.connect(bp).connect(this.skidGain).connect(this.sfx);
     this.skidSrc.start();
 
-    // 氮气持续呼啸
+    // Sustained nitro whoosh
     this.windSrc = ctx.createBufferSource();
     this.windSrc.buffer = this.noise;
     this.windSrc.loop = true;
@@ -91,17 +101,62 @@ export class GameAudio {
     this.windSrc.connect(hp).connect(this.windGain).connect(this.sfx);
     this.windSrc.start();
 
+    // Crowd bed: a filtered roar with a slow swell; setCrowd() sets how loud the fans are
+    this.crowdSrc = ctx.createBufferSource();
+    this.crowdSrc.buffer = this.noise;
+    this.crowdSrc.loop = true;
+    this.crowdSrc.playbackRate.value = 0.7;
+    const clp = ctx.createBiquadFilter();
+    clp.type = 'lowpass';
+    clp.frequency.value = 1900;
+    const chp = ctx.createBiquadFilter();
+    chp.type = 'highpass';
+    chp.frequency.value = 280;
+    this.crowdGain = ctx.createGain();
+    this.crowdGain.gain.value = 0;
+    const swell = ctx.createGain();
+    swell.gain.value = 0.8;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.23;
+    const lfoAmt = ctx.createGain();
+    lfoAmt.gain.value = 0.25;
+    lfo.connect(lfoAmt).connect(swell.gain);
+    lfo.start();
+    this.crowdSrc.connect(clp).connect(chp).connect(swell).connect(this.crowdGain).connect(this.sfx);
+    this.crowdSrc.start();
+
+    // Rivals' engines: the same synth as the player's, each voice with its own panner
+    this.traffic = [];
+    for (let i = 0; i < TRAFFIC_VOICES; i++) {
+      const o1 = ctx.createOscillator();
+      o1.type = 'sawtooth';
+      const o2 = ctx.createOscillator();
+      o2.type = 'square';
+      const g2 = ctx.createGain();
+      g2.gain.value = 0.35;
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.Q.value = 3;
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      o1.connect(f);
+      o2.connect(g2).connect(f);
+      f.connect(g);
+      const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      if (pan) g.connect(pan).connect(this.sfx);
+      else g.connect(this.sfx);
+      o1.start();
+      o2.start();
+      this.traffic.push({ o1, o2, f, g, pan, key: null });
+    }
+
     this.schedTimer = setInterval(() => this.schedule(), 25);
   }
 
   setEngine(speedRatio, throttle, boosting, drifting, active) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    // 模拟换挡：每档转速在 0.35~1 之间循环
-    const gears = 6;
-    const g = Math.min(gears - 1, Math.floor(speedRatio * gears * 0.999));
-    const inGear = speedRatio * gears - g;
-    const rpm = 0.3 + inGear * 0.7 * (0.75 + g * 0.05);
+    const rpm = engineRpm(speedRatio);
     const base = 55 + rpm * 130 + (boosting ? 35 : 0);
     this.eng1.frequency.setTargetAtTime(base, t, 0.05);
     this.eng2.frequency.setTargetAtTime(base * 0.5, t, 0.05);
@@ -112,9 +167,69 @@ export class GameAudio {
     this.windGain.gain.setTargetAtTime(active ? speedRatio * 0.05 + (boosting ? 0.18 : 0) : 0, t, 0.15);
   }
 
-  silence() { this.setEngine(0, 0, false, false, false); }
+  silence() {
+    this.setEngine(0, 0, false, false, false);
+    this.setTraffic([]);
+  }
 
-  // ---------- 音效 ----------
+  // Rivals near the camera, nearest first: [{ key, ratio, throttle, boost, dist, pan, doppler, tone }].
+  // Each keeps its voice while it stays in range so the pitch glides; the level falls off with distance,
+  // distant engines lose their top end, and doppler (approach / recede pitch factor) makes a pass go "neeeow".
+  setTraffic(list) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (const v of this.traffic) if (v.key && !list.some((c) => c.key === v.key)) v.key = null;
+    for (const c of list) {
+      let v = this.traffic.find((x) => x.key === c.key);
+      const fresh = !v;
+      if (fresh) {
+        v = this.traffic.find((x) => !x.key);
+        if (!v) continue;
+        v.key = c.key;
+      }
+      const rpm = engineRpm(c.ratio);
+      const base = (55 + rpm * 130 + (c.boost ? 35 : 0)) * c.tone * c.doppler;
+      const near = 6 / Math.max(c.dist, 6); // 1 within 6 m, then inverse-distance
+      if (fresh) {
+        v.o1.frequency.setValueAtTime(base, t);
+        v.o2.frequency.setValueAtTime(base * 0.5, t);
+      } else {
+        v.o1.frequency.setTargetAtTime(base, t, 0.05);
+        v.o2.frequency.setTargetAtTime(base * 0.5, t, 0.05);
+      }
+      v.f.frequency.setTargetAtTime((500 + rpm * 1600 + (c.throttle > 0 ? 400 : 0)) * (0.35 + 0.65 * Math.sqrt(near)), t, 0.08);
+      v.g.gain.setTargetAtTime(this.sfxOn === false ? 0 : 0.11 * near * (0.65 + 0.35 * c.throttle), t, 0.06);
+      if (v.pan) v.pan.pan.setTargetAtTime(c.pan, t, 0.05);
+    }
+    for (const v of this.traffic) if (!v.key) v.g.gain.setTargetAtTime(0, t, 0.15);
+  }
+
+  // A car going by close: a short rush of air, panned to its side (-1 left .. 1 right)
+  whoosh(pan, k = 1) {
+    if (!this.ctx || this.sfxOn === false) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 0.9;
+    f.frequency.setValueAtTime(1500, t);
+    f.frequency.exponentialRampToValueAtTime(420, t + 0.5);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.24 * k, t + 0.07);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    src.connect(f).connect(g);
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      g.connect(p).connect(this.sfx);
+    } else g.connect(this.sfx);
+    src.start(t, Math.random());
+    src.stop(t + 0.6);
+  }
+
+  // ---------- Sound effects ----------
   tone(freq, dur, type = 'sine', vol = 0.3, slide = 0, delay = 0) {
     if (!this.ctx || !this.sfxOn) return;
     const t = this.ctx.currentTime + delay;
@@ -190,7 +305,125 @@ export class GameAudio {
     }
   }
 
-  // ---------- 背景音乐（前瞻调度的步进音序器）----------
+  // ---------- Crowd ----------
+  setCrowd(level) {
+    if (!this.ctx) return;
+    this.crowdGain.gain.setTargetAtTime(this.sfxOn === false ? 0 : Math.min(0.3, level), this.ctx.currentTime, 0.4);
+  }
+
+  // a cheer: the roar swells through vowel-like formants, with whistles and scattered applause
+  cheer(k = 1) {
+    if (!this.ctx || this.sfxOn === false) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.playbackRate.value = 0.85 + Math.random() * 0.25;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.32 * k, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2.2 + k);
+    for (const [f, q, v] of [[620, 2, 1], [1150, 3, 0.7], [2500, 4, 0.3]]) {
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(f * 0.85, t);
+      bp.frequency.linearRampToValueAtTime(f * 1.1, t + 0.6);
+      bp.Q.value = q;
+      const gv = ctx.createGain();
+      gv.gain.value = v;
+      src.connect(bp).connect(gv).connect(g);
+    }
+    g.connect(this.sfx);
+    src.start(t);
+    src.stop(t + 3.4 + k);
+    for (let i = 0; i < Math.round(2 * k + Math.random()); i++) this.tone(1800 + Math.random() * 900, 0.35, 'sine', 0.045, 1.3, Math.random() * 1.2);
+    for (let i = 0; i < Math.round(16 * k); i++) this.clap(t + 0.3 + Math.random() * 1.8, 0.06 * k);
+  }
+
+  clap(at, vol) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'bandpass';
+    hp.frequency.value = 1400 + Math.random() * 900;
+    hp.Q.value = 1.2;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, at);
+    g.gain.exponentialRampToValueAtTime(0.001, at + 0.06);
+    src.connect(hp).connect(g).connect(this.sfx);
+    src.start(at, Math.random());
+    src.stop(at + 0.08);
+  }
+
+  // A short, stately brass anthem for the podium (an original tune, not any country's). Returns its length in seconds.
+  anthem() {
+    if (!this.ctx || this.sfxOn === false) return 0;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.1, beat = 0.36;
+    const brass = (at, midi, dur, vol) => {
+      const f = NOTE(midi);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(500, at);
+      lp.frequency.linearRampToValueAtTime(2600, at + 0.06);
+      lp.frequency.exponentialRampToValueAtTime(1100, at + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.05);
+      g.gain.setValueAtTime(vol * 0.8, at + dur * 0.7);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur + 0.12);
+      lp.connect(g).connect(this.sfx);
+      for (const det of [-7, 6]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = det;
+        o.connect(lp);
+        o.start(at);
+        o.stop(at + dur + 0.2);
+      }
+    };
+    const play = (line, vol) => {
+      let t = t0;
+      for (const [n, b] of line) {
+        if (n) brass(t, n, b * beat * 0.95, vol);
+        t += b * beat;
+      }
+      return t - t0;
+    };
+    const len = play([[67, 1], [67, 1], [72, 1.5], [71, 0.5], [69, 1], [67, 1], [72, 2], [74, 1], [76, 1.5], [74, 0.5], [72, 1], [71, 1], [72, 3]], 0.11);
+    play([[52, 2], [53, 2], [52, 2], [55, 2], [57, 2], [53, 2], [55, 2], [48, 1]], 0.07); // harmony
+    play([[36, 2], [41, 2], [36, 2], [43, 2], [45, 2], [41, 2], [43, 2], [36, 1]], 0.1); // bass
+    return len;
+  }
+
+  // champagne: the cork pops, then the fizz hisses for a while
+  champagne(dur = 4) {
+    if (!this.ctx || this.sfxOn === false) return;
+    this.tone(520, 0.07, 'square', 0.16, 0.4);
+    this.noiseBurst(0.09, 2200, 1.2, 0.5);
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 3800;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.09, t + 0.15);
+    g.gain.setValueAtTime(0.09, t + dur - 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f).connect(g).connect(this.sfx);
+    src.start(t);
+    src.stop(t + dur + 0.05);
+  }
+
+  airHorn() {
+    if (!this.ctx || this.sfxOn === false) return;
+    [[440, 0], [554, 0], [440, 0.9], [554, 0.9]].forEach(([f, d]) => this.tone(f, 0.7, 'sawtooth', 0.07, 1, d));
+  }
+
+  // ---------- Background music (look-ahead scheduled step sequencer) ----------
   setSong(i) {
     this.song = ((i % SONGS.length) + SONGS.length) % SONGS.length;
     this.step = 0;
@@ -209,8 +442,8 @@ export class GameAudio {
   schedule() {
     if (!this.ctx || !this.playing || !this.musicOn) return;
     const song = SONGS[this.song];
-    const spb = 60 / song.bpm / 4; // 16 分音符
-    // 标签页在后台时定时器被节流，回来后不要把积压的音符一次性补发
+    const spb = 60 / song.bpm / 4; // 16th note
+    // Timers are throttled while the tab is in the background; don't flush the backlog of notes all at once on return
     if (this.nextNoteTime < this.ctx.currentTime - 0.2) this.nextNoteTime = this.ctx.currentTime + 0.05;
     while (this.nextNoteTime < this.ctx.currentTime + 0.12) {
       this.playStep(song, this.step, this.nextNoteTime, spb);
@@ -225,7 +458,7 @@ export class GameAudio {
     const s16 = step % 16;
     const chord = song.prog[bar];
     const root = song.root;
-    // 底鼓
+    // Kick
     if (s16 % 4 === 0) {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -237,20 +470,20 @@ export class GameAudio {
       o.start(t);
       o.stop(t + 0.2);
     }
-    // 军鼓 / 拍手
+    // Snare / clap
     if (s16 === 4 || s16 === 12) this.musicNoise(t, 0.12, 1800, 0.35, 'bandpass');
-    // 踩镲
+    // Hi-hat
     if (s16 % 2 === 1 || song.style === 3) this.musicNoise(t, 0.03, 8000, s16 % 4 === 2 ? 0.18 : 0.1, 'highpass');
-    // 贝斯
+    // Bass
     const bi = Math.floor(s16 / 2);
     if (s16 % 2 === 0 && song.bassPat[bi % 8]) {
       const n = root - 24 + chord[0] + (bi % 4 === 3 ? 12 : 0);
       this.musicTone(t, NOTE(n), spb * 1.8, 'sawtooth', 0.22, 600);
     }
-    // 和弦垫（每小节）
+    // Chord pad (every bar)
     if (s16 === 0)
       for (const c of chord) this.musicTone(t, NOTE(root + c), spb * 15, song.style === 1 ? 'triangle' : 'sawtooth', 0.045, 1400, true);
-    // 琶音主旋律
+    // Arpeggiated lead
     if (s16 % 2 === 0) {
       const li = (s16 / 2 + bar * 2) % song.lead.length;
       const n = root + 12 + chord[0] + song.lead[li];

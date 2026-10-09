@@ -1,26 +1,30 @@
 import { clamp, damp, wrapAngle } from './util.js';
-import { updateFlames, TUNE } from './vehicle.js';
-
-export const AI_NAMES = ['小橘子', '秋名山车神', '漂移少女', '氮气小王子', '风之子', '夜の车神', '闪电旋风', '小飞侠'];
+import { updateFlames, brakeLights, TUNE, engineAccel, gearCut } from './vehicle.js';
 
 export class AICar {
-  constructor(track, model, name, skill, rnd) {
+  constructor(track, model, name, skill, rnd, tune = {}) {
     this.track = track;
     this.model = model;
     this.name = name;
+    this.T = { ...TUNE, ...tune };
+    // how much faster than the baseline car this one can corner
+    this.cornerK = clamp(Math.sqrt(this.T.grip / TUNE.grip) * (this.T.turnRate / TUNE.turnRate), 0.88, 1.12);
     this.skill = skill; // 0.8 ~ 1.1
     this.rnd = rnd;
     this.isPlayer = false;
     this.personal = (rnd() - 0.5) * 0.6;
+    this.enginePitch = 0.93 + rnd() * 0.14; // each rival's engine sounds a little different
     this.s2 = {};
     this.reset(0, 0);
   }
 
   reset(d, lat) {
-    this.dist = d; // 累计行驶距离（可为负：发车格在起点线后）
+    this.dist = d; // Cumulative distance travelled (can be negative: grid slots sit behind the start line)
     this.lat = lat;
     this.latV = 0;
     this.s = 0;
+    this.gear = 0;
+    this.shiftT = 0;
     this.nitroTime = 0;
     this.nitroCd = 6 + this.rnd() * 6;
     this.yawOff = 0;
@@ -50,8 +54,9 @@ export class AICar {
 
   update(dt, active, raceTime, rubber) {
     const tr = this.track;
-    let vmaxBase = TUNE.vmax * (0.8 + 0.2 * this.skill) * rubber;
-    if (this.nitroTime > 0) { vmaxBase += 17; this.nitroTime -= dt; }
+    const T = this.T;
+    let vmaxBase = T.vmax * (0.8 + 0.2 * this.skill) * rubber;
+    if (this.nitroTime > 0) { vmaxBase += (T.vmaxNitro - T.vmax) * 0.8; this.nitroTime -= dt; }
     if (this.magnet > 0) { vmaxBase += 10; this.magnet -= dt; }
     if (this.slowTime > 0) { vmaxBase *= 0.55; this.slowTime -= dt; }
     if (this.shield > 0) this.shield -= dt;
@@ -59,28 +64,48 @@ export class AICar {
     const cNow = tr.curvAhead(d, 8);
     const look = 18 + this.s * 1.25;
     const cAhead = tr.curvAhead(d, look);
-    // 过弯极限（含漂移），技术越好越敢压速
-    const A = 16 + 30 * this.skill;
+    // Cornering limit (including drift); higher skill carries more speed
+    const A = (16 + 30 * this.skill) * this.cornerK;
     const vCorner = Math.sqrt(A / Math.max(Math.abs(cAhead), 1e-4));
     let vt = Math.min(vmaxBase, vCorner + (this.nitroTime > 0 ? 6 : 0));
     let spinning = false;
     if (this.spin > 0) { this.spin -= dt; vt = 5; spinning = true; }
+    // a car ahead in this lane: don't drive into it while still lined up behind.
+    // Closing fast (on a wreck or a stopped car) the braking starts early enough to stop short of it at 30 m/s²
+    const b = this.block, hw = tr.halfW - 2.2;
+    const close = b ? Math.max(0, this.s - b.s) : 0;
+    const blocked = b && !spinning && Math.abs(this.lat - b.lat) < 2.3 && this.blockGap < Math.max(11, 6.5 + (close * close) / 50);
+    if (blocked) vt = Math.min(vt, Math.max(0, b.s - (this.blockGap < 6.5 ? 1.5 : 0)));
     if (!active || raceTime < this.startDelay) vt = 0;
-    if (this.s < vt) this.s += (this.nitroTime > 0 ? 34 : 20 + 4 * this.skill) * (1 - Math.pow(this.s / Math.max(vt, 1), 2) * 0.7) * dt;
-    else this.s -= Math.min(this.s - vt, (spinning ? 50 : 30) * dt);
+    const before = this.s;
+    // same engine curve and gear changes as the player; nitro keeps its hard kick
+    const cut = gearCut(this, dt);
+    if (this.s < vt) {
+      const drive = this.nitroTime > 0
+        ? 34 * (T.nitroAccel / TUNE.nitroAccel) * (1 - Math.pow(this.s / Math.max(vt, 1), 2) * 0.7)
+        : engineAccel(T, this.s, vmaxBase) * cut * (0.92 + 0.08 * this.skill);
+      this.s = Math.min(vt, this.s + drive * dt);
+    } else this.s -= Math.min(this.s - vt, (spinning ? 50 : 30) * dt);
     this.s = Math.max(0, this.s);
+    // slowing faster than lifting off would: that's the brakes
+    this.braking = before - this.s > 8 * dt;
 
-    // 直道上找机会放氮气
+    // Look for chances to fire nitro on straights
     this.nitroCd -= dt;
     if (active && this.nitroCd <= 0 && Math.abs(tr.curvAhead(d, 140)) < 0.006 && this.s > 35) {
       this.nitroTime = 2.6;
       this.nitroCd = (6 + this.rnd() * 8) / this.skill;
     }
 
-    // 赛车线：出入弯走内线
-    const hw = tr.halfW - 2.2;
+    // Racing line: take the inside line through corners
     const inside = -Math.sign(cAhead) * clamp(Math.abs(cAhead) * 45, 0, 1) * hw * 0.8;
-    const target = clamp(inside + this.personal * hw * 0.8, -hw, hw);
+    let target = clamp(inside + this.personal * hw * 0.8, -hw, hw);
+    // pull out to pass: the side it's already leaning to, unless the wall is there
+    if (b && !spinning && this.blockGap < 20 + close * 0.8) {
+      let side = this.lat >= b.lat ? 1 : -1;
+      if (Math.abs(b.lat + side * 3.3) > hw) side = -side;
+      target = clamp(b.lat + side * 3.3, -hw, hw);
+    }
     const accLat = clamp((target - this.lat) * 2.2 - this.latV * 2.4, -14, 14);
     this.latV += accLat * dt;
     this.lat += this.latV * dt;
@@ -94,7 +119,7 @@ export class AICar {
     this.x = s.x + s.rx * this.lat;
     this.z = s.z + s.rz * this.lat;
     const gy = s.y + this.lat * Math.sin(s.bank);
-    // 腾空
+    // Airborne
     if (this.airborne) {
       this.vy -= TUNE.gravity * dt;
       this.y += this.vy * dt;
@@ -105,7 +130,7 @@ export class AICar {
       this.y = gy + this.vy * dt;
     } else this.y = gy;
 
-    // 视觉漂移：弯中甩尾
+    // Visual drift: swing the tail out mid-corner
     const wantDrift = Math.abs(cNow) > 0.012 && this.s > 26;
     this.drifting = wantDrift;
     this.driftDir = Math.sign(cNow);
@@ -129,10 +154,12 @@ export class AICar {
     m.rotation.set(pitch, this.h + this.spinAng, -this.bank * Math.cos(rel), 'YXZ');
     u.root.rotation.z = damp(u.root.rotation.z, this.drifting ? this.driftDir * 0.07 : 0, 6, dt);
     for (const w of u.wheels) {
-      w.spin.rotation.x += (this.s * dt) / 0.47;
+      w.spin.rotation.x += (this.s * dt) / w.r;
       if (w.front) w.steer.rotation.y = this.drifting ? -this.driftDir * 0.3 : clamp(wrapAngle(this.yawOff) * 2, -0.4, 0.4);
     }
+    u.drive?.(this.drifting ? -this.driftDir * 0.55 : clamp(wrapAngle(this.yawOff) * 5, -1, 1));
     updateFlames(u, this.nitroTime > 0, false);
+    brakeLights(u, this.braking, this.s);
     u.shield.visible = this.shield > 0;
   }
 }
